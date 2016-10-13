@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <iostream>
+#include <libexplain/read.h>
 using namespace std;
 
 int strings_in_file = 0;
@@ -79,12 +80,14 @@ int main (int argc, const char *argv[]) {
   int mmap_on = 0;
   int thread_on = 0;
   int size = 1024;
-  char *buffer;
+  char *buffer = (char *) malloc(sizeof(char *) * 8192);
   int strcounter = 0;
-  int fd, filechecker, i, num_threads, status;
+  int filechecker = 1;
+  int fd, i, num_threads, status;
   struct stat sb;
+  string file_path = argv[1];
   
-  if ((fd = open(argv[1], O_RDONLY)) < 0) {
+  if ((fd = open(file_path.c_str(), O_RDONLY, S_IRUSR)) < 0) {
     perror("Could not open file");
     exit (1);
   }
@@ -95,9 +98,9 @@ int main (int argc, const char *argv[]) {
     } else if ('p' == argv[3][0]) {
       num_threads = (argv[3][1] - 48);
 
-      if (num_threads > 8) {
-	printf("Too many threads! Try 8 or less\n");
-	exit(-1);
+      if (argv[3][2] - 48 >= 0 || num_threads == 9) {
+	printf("Too many threads! Try 8 or less.\n");
+	exit(1);
       }
 
       thread_on = 1;
@@ -158,8 +161,19 @@ int main (int argc, const char *argv[]) {
       pthread_join(threads[i], NULL);
     }
   } else {
-    while ((filechecker = read(fd, buffer, size)) > 0) {
-      for (i = 0; i < filechecker; i++) {
+    int reading = 1;
+    while (reading) {
+      int read_size = read(fd, buffer, size);
+      if (read_size < size) {
+	reading = 0;
+      }
+
+      if (read_size < 0) {
+	fprintf(stderr, "%s\n", explain_read(fd, buffer, size));
+	exit(EXIT_FAILURE);
+      }
+
+      for (i = 0; i < read_size; i++) {
 	if (buffer[i] == searchstring[strcounter]) {
 	  strcounter++;
 
@@ -173,9 +187,6 @@ int main (int argc, const char *argv[]) {
       }
     }
   }
-
-  //printf("%d", filechecker);
-  //printf("\33[2K\r");
 
   printf("Occurrences of the string \"%s\": %d\n", 
 	 searchstring, strings_in_file);
